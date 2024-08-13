@@ -1,10 +1,12 @@
 [package]
 name = "og"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0.86", features = ["backtrace"] }
 clap = { version = "4.5.15", features = ["derive"] }
+futures = "0.3.30"
+tokio = { version = "1.39.2", features = ["full", "tracing"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

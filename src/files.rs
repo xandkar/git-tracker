@@ -1,12 +1,25 @@
 use std::{
     collections::HashSet,
-    fs,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
+use futures::{stream, Stream};
+
+pub fn find_dirs(
+    root: &Path,
+    target_name: &str,
+    follow: bool,
+    ignore: &HashSet<PathBuf>,
+) -> impl Stream<Item = PathBuf> {
+    stream::unfold(
+        Dirs::init(root, target_name, follow, ignore),
+        |mut dirs| async { dirs.next().await.map(|dir| (dir, dirs)) },
+    )
+}
+
 #[derive(Debug)]
-pub struct Dirs {
+struct Dirs {
     target_name: String,
     follow: bool,
     ignore: HashSet<PathBuf>,
@@ -14,8 +27,7 @@ pub struct Dirs {
 }
 
 impl Dirs {
-    #[must_use]
-    pub fn find(
+    fn init(
         root: &Path,
         target_name: &str,
         follow: bool,
@@ -29,12 +41,12 @@ impl Dirs {
             frontier: vec![root],
         }
     }
-}
 
-impl Iterator for Dirs {
-    type Item = PathBuf;
+    async fn next(&mut self) -> Option<PathBuf> {
+        // XXX Walking the fs tree with tokio is about 5x slower!
+        // use tokio::fs;
+        use std::fs;
 
-    fn next(&mut self) -> Option<Self::Item> {
         while let Some(path) = self.frontier.pop() {
             if self.ignore.contains(&path) {
                 continue;
@@ -75,6 +87,7 @@ impl Iterator for Dirs {
                             );
                         }
                         Ok(entries) => {
+                            // --- std ---
                             for entry_result in entries {
                                 match entry_result {
                                     Ok(entry) => {
@@ -88,6 +101,23 @@ impl Iterator for Dirs {
                                     }
                                 }
                             }
+
+                            // --- tokio ---
+                            // loop {
+                            //     match entries.next_entry().await {
+                            //         Ok(Some(entry)) => {
+                            //             self.frontier.push(entry.path());
+                            //         }
+                            //         Ok(None) => break,
+                            //         Err(error) => {
+                            //             tracing::error!(
+                            //                 from = ?path, ?error,
+                            //                 "Failed to read an entry",
+                            //             );
+                            //             break;
+                            //         }
+                            //     }
+                            // }
                         }
                     }
                 }

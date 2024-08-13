@@ -1,4 +1,5 @@
 use clap::Parser;
+use tracing::{info_span, Instrument};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -16,13 +17,14 @@ enum Cmd {
     Find(og::cmd::find::Cmd),
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     og::tracing_init(Some(cli.log_level))?;
     tracing::debug!(?cli, "Starting");
     match cli.command {
         Cmd::Find(cmd) => {
-            cmd.run()?;
+            cmd.run().instrument(info_span!("find")).await?;
         }
     }
     Ok(())

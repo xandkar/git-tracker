@@ -1,0 +1,4 @@
+# https://doc.rust-lang.org/cargo/reference/config.html
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]

@@ -1,5 +1,7 @@
 use std::{collections::HashSet, path::PathBuf};
 
+use futures::{stream, FutureExt, StreamExt};
+
 #[derive(clap::Args, Debug, Clone)]
 pub struct Cmd {
     /// Follow symbollic links.
@@ -14,22 +16,24 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self) -> anyhow::Result<()> {
         let ignore: HashSet<PathBuf> = self.ignore.iter().cloned().collect();
         let mut roots = Vec::new();
         for path in self.dirs.iter() {
             let root = path.canonicalize()?;
             roots.push(root);
         }
-        let locals = roots
-            .into_iter()
-            .flat_map(|d| {
-                crate::files::Dirs::find(&d, ".git", self.follow, &ignore)
+        stream::iter(roots)
+            .flat_map(|root| {
+                crate::files::find_dirs(&root, ".git", self.follow, &ignore)
             })
-            .filter_map(|path| crate::git::Local::read(&path).ok());
-        for local in locals {
-            dbg!(local);
-        }
+            .filter_map(|path| {
+                crate::git::Local::read(path).map(|res| res.ok())
+            })
+            .for_each_concurrent(None, |repo| async {
+                dbg!(repo);
+            })
+            .await;
         Ok(())
     }
 }

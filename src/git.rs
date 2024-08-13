@@ -1,11 +1,11 @@
 use std::{
     collections::HashSet,
-    fs,
     io::{self, BufRead},
     path::{Path, PathBuf},
 };
 
 use anyhow::anyhow;
+use tokio::{fs, process};
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct HeadRef {
@@ -36,25 +36,28 @@ pub struct Local {
 }
 
 impl Local {
-    pub fn read(path: &Path) -> anyhow::Result<Self> {
+    pub async fn read<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let path = path.as_ref();
         let selph = Self {
-            hostname: hostname()?,
+            hostname: hostname().await?,
             path: path.to_path_buf(),
-            is_bare: is_bare(path)?,
-            description: description(path)?,
-            roots: roots(path)?.into_iter().collect(),
-            heads: heads(path)?,
-            remotes: remotes(path)?,
+            is_bare: is_bare(path).await?,
+            description: description(path).await?,
+            roots: roots(path).await?.into_iter().collect(),
+            heads: head_refs(path).await?,
+            remotes: remote_refs(path).await?,
         };
         Ok(selph)
     }
 }
 
 #[tracing::instrument]
-pub fn heads(dir: &Path) -> anyhow::Result<HashSet<HeadRef>> {
+pub async fn head_refs(dir: &Path) -> anyhow::Result<HashSet<HeadRef>> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let mut heads = HashSet::new();
-    for line_result in cmd("git", &[&git_dir, "show-ref", "--heads"])?.lines()
+    for line_result in cmd("git", &[&git_dir, "show-ref", "--heads"])
+        .await?
+        .lines()
     {
         let line = line_result?;
         match line.split_whitespace().collect::<Vec<&str>>()[..] {
@@ -80,10 +83,11 @@ pub fn heads(dir: &Path) -> anyhow::Result<HashSet<HeadRef>> {
 }
 
 #[tracing::instrument]
-pub fn remotes(dir: &Path) -> anyhow::Result<HashSet<RemoteRef>> {
+pub async fn remote_refs(dir: &Path) -> anyhow::Result<HashSet<RemoteRef>> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let mut remotes = HashSet::new();
-    for line_result in cmd("git", &[&git_dir, "remote", "-v"])?.lines() {
+    for line_result in cmd("git", &[&git_dir, "remote", "-v"]).await?.lines()
+    {
         let line = line_result?;
         match line.split_whitespace().collect::<Vec<&str>>()[..] {
             [name, addr] => {
@@ -100,13 +104,14 @@ pub fn remotes(dir: &Path) -> anyhow::Result<HashSet<RemoteRef>> {
 }
 
 #[tracing::instrument]
-pub fn roots(dir: &Path) -> anyhow::Result<Vec<String>> {
+pub async fn roots(dir: &Path) -> anyhow::Result<Vec<String>> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let mut roots = Vec::new();
     for line_result in cmd(
         "git",
         &[&git_dir, "rev-list", "--max-parents=0", "HEAD", "--"],
-    )?
+    )
+    .await?
     .lines()
     {
         let root = line_result?;
@@ -116,29 +121,31 @@ pub fn roots(dir: &Path) -> anyhow::Result<Vec<String>> {
 }
 
 #[tracing::instrument]
-pub fn is_bare(dir: &Path) -> anyhow::Result<bool> {
+pub async fn is_bare(dir: &Path) -> anyhow::Result<bool> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
-    let out = cmd("git", &[&git_dir, "rev-parse", "--is-bare-repository"])?;
+    let out =
+        cmd("git", &[&git_dir, "rev-parse", "--is-bare-repository"]).await?;
     let out = String::from_utf8(out)?;
     let is_bare: bool = out.trim().parse()?;
     Ok(is_bare)
 }
 
-fn description(dir: &Path) -> io::Result<Option<String>> {
+async fn description(dir: &Path) -> io::Result<Option<String>> {
     fs::read_to_string(dir.join("description"))
+        .await
         .map(|s| (!s.starts_with("Unnamed repository;")).then_some(s))
 }
 
-fn hostname() -> anyhow::Result<String> {
+async fn hostname() -> anyhow::Result<String> {
     // TODO Consider a cross-platofrm way to lookup hostname.
-    let bytes = cmd("hostname", &[])?;
+    let bytes = cmd("hostname", &[]).await?;
     let str = String::from_utf8(bytes)?;
     let str = str.trim();
     Ok(str.to_string())
 }
 
-fn cmd(exe: &str, args: &[&str]) -> anyhow::Result<Vec<u8>> {
-    let out = std::process::Command::new(exe).args(args).output()?;
+async fn cmd(exe: &str, args: &[&str]) -> anyhow::Result<Vec<u8>> {
+    let out = process::Command::new(exe).args(args).output().await?;
     if out.status.success() {
         Ok(out.stdout)
     } else {
