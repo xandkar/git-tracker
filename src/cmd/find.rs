@@ -25,7 +25,7 @@ impl Cmd {
         }
         stream::iter(roots)
             .flat_map(|root| {
-                crate::files::find_dirs(&root, ".git", self.follow, &ignore)
+                crate::fs::find_dirs(&root, ".git", self.follow, &ignore)
             })
             .filter_map(|path| {
                 crate::git::Local::read(path).map(|res| res.ok())

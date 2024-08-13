@@ -5,7 +5,8 @@ use std::{
 };
 
 use anyhow::anyhow;
-use tokio::{fs, process};
+
+use crate::os;
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct HeadRef {
@@ -39,7 +40,7 @@ impl Local {
     pub async fn read<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let path = path.as_ref();
         let selph = Self {
-            hostname: hostname().await?,
+            hostname: os::hostname().await?,
             path: path.to_path_buf(),
             is_bare: is_bare(path).await?,
             description: description(path).await?,
@@ -55,7 +56,7 @@ impl Local {
 pub async fn head_refs(dir: &Path) -> anyhow::Result<HashSet<HeadRef>> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let mut heads = HashSet::new();
-    for line_result in cmd("git", &[&git_dir, "show-ref", "--heads"])
+    for line_result in os::cmd("git", &[&git_dir, "show-ref", "--heads"])
         .await?
         .lines()
     {
@@ -86,7 +87,8 @@ pub async fn head_refs(dir: &Path) -> anyhow::Result<HashSet<HeadRef>> {
 pub async fn remote_refs(dir: &Path) -> anyhow::Result<HashSet<RemoteRef>> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let mut remotes = HashSet::new();
-    for line_result in cmd("git", &[&git_dir, "remote", "-v"]).await?.lines()
+    for line_result in
+        os::cmd("git", &[&git_dir, "remote", "-v"]).await?.lines()
     {
         let line = line_result?;
         match line.split_whitespace().collect::<Vec<&str>>()[..] {
@@ -107,7 +109,7 @@ pub async fn remote_refs(dir: &Path) -> anyhow::Result<HashSet<RemoteRef>> {
 pub async fn roots(dir: &Path) -> anyhow::Result<Vec<String>> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let mut roots = Vec::new();
-    for line_result in cmd(
+    for line_result in os::cmd(
         "git",
         &[&git_dir, "rev-list", "--max-parents=0", "HEAD", "--"],
     )
@@ -124,38 +126,15 @@ pub async fn roots(dir: &Path) -> anyhow::Result<Vec<String>> {
 pub async fn is_bare(dir: &Path) -> anyhow::Result<bool> {
     let git_dir = format!("--git-dir={}", dir.to_string_lossy());
     let out =
-        cmd("git", &[&git_dir, "rev-parse", "--is-bare-repository"]).await?;
+        os::cmd("git", &[&git_dir, "rev-parse", "--is-bare-repository"])
+            .await?;
     let out = String::from_utf8(out)?;
     let is_bare: bool = out.trim().parse()?;
     Ok(is_bare)
 }
 
 async fn description(dir: &Path) -> io::Result<Option<String>> {
-    fs::read_to_string(dir.join("description"))
+    tokio::fs::read_to_string(dir.join("description"))
         .await
         .map(|s| (!s.starts_with("Unnamed repository;")).then_some(s))
-}
-
-async fn hostname() -> anyhow::Result<String> {
-    // TODO Consider a cross-platofrm way to lookup hostname.
-    let bytes = cmd("hostname", &[]).await?;
-    let str = String::from_utf8(bytes)?;
-    let str = str.trim();
-    Ok(str.to_string())
-}
-
-async fn cmd(exe: &str, args: &[&str]) -> anyhow::Result<Vec<u8>> {
-    let out = process::Command::new(exe).args(args).output().await?;
-    if out.status.success() {
-        Ok(out.stdout)
-    } else {
-        tracing::error!(
-            ?exe,
-            ?args,
-            ?out,
-            stderr = ?String::from_utf8_lossy(&out.stderr[..]),
-            "Failed to execute command."
-        );
-        Err(anyhow!("Failed to execute command: {exe:?} {args:?}"))
-    }
 }

@@ -1,6 +1,7 @@
 pub mod cmd;
-pub mod files;
+pub mod fs;
 pub mod git;
+pub mod os;
 
 pub fn tracing_init(level: Option<tracing::Level>) -> anyhow::Result<()> {
     use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer};
