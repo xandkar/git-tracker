@@ -14,13 +14,9 @@ pub async fn cmd(exe: &str, args: &[&str]) -> anyhow::Result<Vec<u8>> {
     if out.status.success() {
         Ok(out.stdout)
     } else {
-        tracing::error!(
-            ?exe,
-            ?args,
-            ?out,
-            stderr = ?String::from_utf8_lossy(&out.stderr[..]),
-            "Failed to execute command."
-        );
-        Err(anyhow!("Failed to execute command: {exe:?} {args:?}"))
+        Err(anyhow!(
+            "Failed to execute command: exe={exe:?} args={args:?} err={:?}",
+            String::from_utf8_lossy(&out.stderr[..])
+        ))
     }
 }

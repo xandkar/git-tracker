@@ -6,6 +6,7 @@ use std::{
 
 use futures::{stream, Stream};
 
+#[tracing::instrument]
 pub fn find_dirs(
     root: &Path,
     target_name: &str,
@@ -14,7 +15,7 @@ pub fn find_dirs(
 ) -> impl Stream<Item = PathBuf> {
     stream::unfold(
         Dirs::init(root, target_name, follow, ignore),
-        |mut dirs| async { dirs.next().await.map(|dir| (dir, dirs)) },
+        |mut dirs| async { dirs.next().map(|dir| (dir, dirs)) },
     )
 }
 
@@ -42,7 +43,7 @@ impl Dirs {
         }
     }
 
-    async fn next(&mut self) -> Option<PathBuf> {
+    fn next(&mut self) -> Option<PathBuf> {
         // XXX Walking the fs tree with tokio is about 5x slower!
         // use tokio::fs;
         use std::fs;
