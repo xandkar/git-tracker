@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use futures::{stream, FutureExt, StreamExt};
+use futures::{stream, StreamExt};
 
 #[derive(clap::Args, Debug, Clone)]
 pub struct Cmd {
@@ -27,8 +27,12 @@ impl Cmd {
             .flat_map(|root| {
                 crate::fs::find_dirs(&root, ".git", self.follow, &ignore)
             })
-            .filter_map(|path| {
-                crate::git::Local::read(path).map(|res| res.ok())
+            .filter_map(|path| async move {
+                let res = crate::git::Local::read(&path).await;
+                if let Err(error) = &res {
+                    tracing::error!(?path, ?error, "Failed to read repo.");
+                }
+                res.ok()
             })
             .for_each_concurrent(None, |repo| async {
                 dbg!(repo);
