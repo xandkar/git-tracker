@@ -10,9 +10,9 @@ TODO
 
 - [x] find all local git repos
 - [x] fetch remotes
+- [x] parallelize/asynchronize
 - [ ] store data
 - [ ] report out of sync and orphaned repos
-- [ ] parallelize
 
 Questions
 ---------

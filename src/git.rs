@@ -16,7 +16,7 @@ pub struct View {
     pub repo: Option<Repo>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum Link {
     Fs { dir: PathBuf },
     Net { url: String },
@@ -66,7 +66,6 @@ impl Repo {
     pub async fn read_from_url(url: &str) -> anyhow::Result<Self> {
         let dir = tempfile::tempdir()?;
         let dir = dir.path();
-        tracing::debug!(?url, ?dir, "Cloning");
         clone_bare(url, dir).await?;
         Self::read_from_fs(dir).await
     }
@@ -121,13 +120,12 @@ impl FromStr for RemoteRef {
     }
 }
 
-pub async fn view(host: &str, link: &Link) -> anyhow::Result<View> {
-    let view = View {
+pub async fn view(host: &str, link: &Link) -> View {
+    View {
         host: host.to_string(),
         link: link.clone(),
         repo: Repo::read_from_link(link).await.ok(),
-    };
-    Ok(view)
+    }
 }
 
 pub async fn is_repo<P: AsRef<Path>>(dir: P) -> bool {
