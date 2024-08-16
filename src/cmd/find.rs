@@ -34,25 +34,16 @@ impl Cmd {
         }
         let urls: Arc<DashSet<String>> = Arc::new(DashSet::new());
         let host = os::hostname().await?;
-        stream::iter(search_paths)
-            .flat_map(|path| {
-                crate::fs::find_dirs(
-                    &path,
-                    ".git",
-                    self.follow,
-                    &ignore_paths,
-                )
-            })
-            .filter(|path| git::is_repo(path.clone()))
-            .map(|path| git::Link::Fs { dir: path })
-            .filter_map(|link| {
-                let host = host.clone();
-                async move { git::view(&host, &link).await.ok() }
-            })
-            .for_each_concurrent(None, {
-                |view| {
-                    let urls = Arc::clone(&urls);
-                    async move {
+        let git_dirs = search_paths.iter().flat_map(|path| {
+            crate::fs::find_dirs(path, ".git", self.follow, &ignore_paths)
+        });
+        // XXX This has been the fastest combination: sync producer + async consumer.
+        stream::iter(git_dirs)
+            .for_each_concurrent(None, |dir| async {
+                if git::is_repo(&dir).await {
+                    if let Ok(view) =
+                        git::view(&host, &git::Link::Fs { dir }).await
+                    {
                         println!("{:#?}", &view);
                         for url in view
                             .repo
