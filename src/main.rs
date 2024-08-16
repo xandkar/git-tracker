@@ -14,13 +14,13 @@ struct Cli {
 #[derive(Debug, clap::Subcommand)]
 enum Cmd {
     /// Find all git repos under the given directories.
-    Find(og::cmd::find::Cmd),
+    Find(git_tracker::cmd::find::Cmd),
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    og::tracing_init(Some(cli.log_level))?;
+    git_tracker::tracing_init(Some(cli.log_level))?;
     tracing::debug!(?cli, "Starting");
     match cli.command {
         Cmd::Find(cmd) => {
