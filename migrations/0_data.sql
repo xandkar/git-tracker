@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    host TEXT NOT NULL,
+    link JSON NOT NULL,
+    repo JSON,
+    UNIQUE(host, link)
+);

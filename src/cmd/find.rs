@@ -7,10 +7,14 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{info_span, Instrument};
 
-use crate::{git, os};
+use crate::{data, git, os};
 
 #[derive(clap::Args, Debug, Clone)]
 pub struct Cmd {
+    /// Database file.
+    #[clap(short, long, default_value = "git-tracker.db")]
+    db_file: PathBuf,
+
     /// Follow symbollic links.
     #[clap(short, long, default_value_t = false)]
     follow: bool,
@@ -35,14 +39,16 @@ impl Cmd {
                 .context(format!("Invalid local path={path:?}"))?;
             search_paths.push(path);
         }
-        let locals: Arc<DashSet<git::Link>> = Arc::new(DashSet::new());
-        let remotes_ok: Arc<DashSet<git::Link>> = Arc::new(DashSet::new());
-        let remotes_err: Arc<DashSet<git::Link>> = Arc::new(DashSet::new());
+        let locals: Arc<DashSet<data::Link>> = Arc::new(DashSet::new());
+        let remotes_ok: Arc<DashSet<data::Link>> = Arc::new(DashSet::new());
+        let remotes_err: Arc<DashSet<data::Link>> = Arc::new(DashSet::new());
 
         let host = os::hostname().await?;
 
         let (urls_tx, urls_rx) = mpsc::unbounded_channel();
-        let (views_tx, _views_rx) = mpsc::unbounded_channel();
+        let (views_tx, views_rx) = mpsc::unbounded_channel();
+        let storage = data::Storage::connect(&self.db_file).await?;
+        let storage = Arc::new(storage);
 
         let locals_worker = tokio::spawn(
             {
@@ -64,7 +70,7 @@ impl Cmd {
                     stream::iter(git_dirs)
                         .for_each_concurrent(None, |dir| async {
                             if git::is_repo(&dir).await {
-                                let link = git::Link::Fs { dir };
+                                let link = data::Link::Fs { dir };
                                 let view = git::view(&host, &link).await;
                                 locals.insert(link);
                                 for url in view.repo.iter().flat_map(|repo| {
@@ -92,7 +98,8 @@ impl Cmd {
                         .await;
                 }
             }
-            .instrument(info_span!("locals_worker")),
+            .instrument(info_span!("locals_worker"))
+            .in_current_span(),
         );
 
         let remotes_worker = tokio::spawn(
@@ -109,7 +116,7 @@ impl Cmd {
                                 let remotes_err = remotes_err.clone();
                                 let views_tx = views_tx.clone();
                                 async move {
-                                    let link = git::Link::Net { url };
+                                    let link = data::Link::Net { url };
                                     let view = git::view(&host, &link).await;
                                     if view.repo.is_some() {
                                         remotes_ok.insert(link);
@@ -130,11 +137,46 @@ impl Cmd {
                         .await;
                 }
             }
-            .instrument(info_span!("remotes_worker")),
+            .instrument(info_span!("remotes_worker"))
+            .in_current_span(),
+        );
+
+        let storage_worker = tokio::spawn(
+            async move {
+                UnboundedReceiverStream::new(views_rx)
+                    .for_each_concurrent(None, move |view| {
+                        let storage = storage.clone();
+                        async move {
+                            tracing::debug!(?view, "Storing.");
+                            match storage.store_view(&view).await {
+                                Ok(id) => {
+                                    tracing::info!(
+                                        id,
+                                        ?view,
+                                        "View store succeeded."
+                                    );
+                                }
+                                Err(error) => {
+                                    // TODO Exit app on storage failure?
+                                    tracing::error!(
+                                        ?error,
+                                        ?view,
+                                        "View store failed."
+                                    );
+                                }
+                            }
+                        }
+                    })
+                    .await;
+            }
+            .instrument(info_span!("storage_worker"))
+            .in_current_span(),
         );
 
         let _ = locals_worker.await;
         let _ = remotes_worker.await;
+        drop(views_tx); // XXX Otherwise view_rx blocks forever.
+        let _ = storage_worker.await;
 
         tracing::info!(
             locals = locals.len(),

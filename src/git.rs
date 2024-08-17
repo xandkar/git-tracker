@@ -1,39 +1,16 @@
 use std::{
     collections::{HashMap, HashSet},
     io::{self, BufRead},
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
 };
 
 use anyhow::{anyhow, bail};
 
-use crate::os;
-
-#[derive(Debug)]
-pub struct View {
-    pub host: String,
-    pub link: Link,
-    pub repo: Option<Repo>,
-}
-
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub enum Link {
-    Fs { dir: PathBuf },
-    Net { url: String },
-}
-
-#[derive(Debug)]
-pub struct Branch {
-    pub roots: HashSet<String>,
-    pub leaf: String,
-}
-
-#[derive(Debug)]
-pub struct Repo {
-    pub description: Option<String>,
-    pub remotes: HashMap<String, String>,
-    pub branches: HashMap<String, Branch>,
-}
+use crate::{
+    data::{Branch, Link, Repo, View},
+    os,
+};
 
 impl Repo {
     #[tracing::instrument]

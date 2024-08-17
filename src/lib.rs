@@ -1,4 +1,5 @@
 pub mod cmd;
+pub mod data;
 pub mod fs;
 pub mod git;
 pub mod os;
