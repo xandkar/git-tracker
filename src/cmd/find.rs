@@ -15,6 +15,10 @@ pub struct Cmd {
     #[clap(short, long, default_value = "git-tracker.db")]
     db_file: PathBuf,
 
+    /// Database insertion batch size - how may views to pack into a single transaction.
+    #[clap(short, long, default_value_t = 1000)]
+    batch_size: usize,
+
     /// Follow symbollic links.
     #[clap(short, long, default_value_t = false)]
     follow: bool,
@@ -141,27 +145,23 @@ impl Cmd {
             .in_current_span(),
         );
 
+        let batch_size = self.batch_size;
         let storage_worker = tokio::spawn(
             async move {
                 UnboundedReceiverStream::new(views_rx)
-                    .for_each_concurrent(None, move |view| {
+                    .chunks(batch_size)
+                    .for_each_concurrent(None, move |views| {
                         let storage = storage.clone();
                         async move {
-                            tracing::debug!(?view, "Storing.");
-                            match storage.store_view(&view).await {
-                                Ok(id) => {
-                                    tracing::info!(
-                                        id,
-                                        ?view,
-                                        "View store succeeded."
-                                    );
+                            match storage.store_views(&views[..]).await {
+                                Ok(()) => {
+                                    tracing::info!("Views store succeeded.");
                                 }
                                 Err(error) => {
                                     // TODO Exit app on storage failure?
                                     tracing::error!(
                                         ?error,
-                                        ?view,
-                                        "View store failed."
+                                        "Views store failed."
                                     );
                                 }
                             }

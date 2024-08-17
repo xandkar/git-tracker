@@ -57,18 +57,21 @@ impl Storage {
         Ok(selph)
     }
 
-    pub async fn store_view(&self, view: &View) -> anyhow::Result<i64> {
-        let View { host, link, repo } = view;
-        let link = serde_json::to_string(link)?;
-        let repo = serde_json::to_string(repo)?;
-
-        let id = sqlx::query(
-            "INSERT OR REPLACE INTO views (host, link, repo) VALUES (?, ?, ?)"
-        )
-            .bind(host)
-            .bind(link)
-            .bind(repo)
-            .execute(&self.pool).await?.last_insert_rowid();
-        Ok(id)
+    pub async fn store_views(&self, views: &[View]) -> anyhow::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        for view in views {
+            let View { host, link, repo } = view;
+            let link = serde_json::to_string(link)?;
+            let repo = serde_json::to_string(repo)?;
+            let _id = sqlx::query(
+                "INSERT OR REPLACE INTO views (host, link, repo) VALUES (?, ?, ?)"
+            )
+                .bind(host)
+                .bind(link)
+                .bind(repo)
+                .execute(&mut *tx).await?.last_insert_rowid();
+        }
+        tx.commit().await?;
+        Ok(())
     }
 }
