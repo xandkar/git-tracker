@@ -12,6 +12,10 @@ TODO
 - [x] fetch remotes
 - [x] parallelize/asynchronize
 - [x] store data
+- [ ] list hosted repos
+  + [ ] github
+  + [ ] bitbucket
+  + ...
 - [ ] report
   + out of sync
   + orphaned
