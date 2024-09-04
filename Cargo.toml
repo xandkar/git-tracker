@@ -2,6 +2,11 @@
 name = "git-tracker"
 version = "0.3.1"
 edition = "2021"
+description = "Find and compare all your scattered git repos."
+repository = "https://github.com/xandkar/git-tracker"
+keywords = ["git"]
+categories = ["command-line-utilities"]
+license-file = "LICENSE"
 
 [dependencies]
 anyhow = { version = "1.0.86", features = ["backtrace"] }

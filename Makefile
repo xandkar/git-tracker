@@ -39,6 +39,7 @@ install:
 release:
 	$(MAKE) -s version_tag
 	$(MAKE) -s tags_push
+	$(MAKE) -s crate_publish
 
 .PHONY: version_tag
 version_tag:
@@ -47,3 +48,7 @@ version_tag:
 .PHONY: tags_push
 tags_push:
 	git push --tags origin
+
+.PHONY: crate_publish
+crate_publish:
+	cargo publish
